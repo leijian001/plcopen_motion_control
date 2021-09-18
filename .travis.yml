@@ -1,0 +1,57 @@
+sudo: required
+dist: bionic
+services:
+  - docker
+language: cpp
+compiler: gcc
+
+notifications:
+  email:
+    recipients:
+
+addons:
+  apt:
+    packages:
+      - doxygen
+
+before_install: 
+  - sudo apt-get update -qq
+  - sudo apt-get -qq install graphviz
+  - sudo apt-get -qq install libeigen3-dev
+  - sudo apt-get -qq install python-matplotlib python-numpy python2.7-dev python-tk
+  - python -c 'import matplotlib.pyplot'
+
+before_script:
+  - export CXXFLAGS="-std=c++11"
+  - cd ~ && git clone https://github.com/google/googletest.git
+  - cd googletest && mkdir build
+  - cd build
+  - cmake .. -DBUILD_SHARED_LIBS=ON
+  - sudo make install
+  - echo $PWD
+
+script:
+  - cd $TRAVIS_BUILD_DIR
+  - mkdir build
+  - cd build
+  - cmake .. -DTEST=ON
+  - make
+  - ./function_block_test
+  - ./online_scurve_test
+  - ./offline_scurve_test
+  - ./planner_test
+  - cd ..
+  - rm -rf build
+  - doxygen ./Doxyfile
+
+after_success:
+  - touch build/html/.nojekyll
+
+deploy:
+  # Deploy to gh-pages branch
+  provider: pages
+  skip-cleanup: true
+  github-token: $GITHUB_TOKEN
+  local_dir: ./build/html
+  on:
+    branch: master 

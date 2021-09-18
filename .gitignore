@@ -1,0 +1,14 @@
+# VScode files
+.vscode
+
+# Build files
+build
+
+# Image files
+*.png
+
+# Generated documentation files
+doc
+
+# Eigen files
+*Eigen

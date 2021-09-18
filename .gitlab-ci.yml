@@ -1,0 +1,103 @@
+stages:
+  - build
+  - deploy
+  - cleanup
+
+before_script:
+  - PLC_HEAD=$(git rev-parse HEAD)
+  - echo "$PLC_HEAD"
+  - PLC_URL=$(git remote get-url origin)
+  - echo $PLC_URL > url.txt
+  - sed -i "s/gitlab-ci-token/git/1" url.txt
+  - sed -i "s/git.*@/git@/g" url.txt
+  - sed -i "s/https/git/1" url.txt
+  - sed -i "s/com/com:29418/1" url.txt
+  - PLC_URL=$(cat url.txt)
+  - echo $PLC_URL
+  - mkdir -p ${HOME}/.ssh
+  - eval $(ssh-agent -s)
+  - ssh-add <(echo "$SSH_PRIVATE_KEY")
+  - rm -rf ${HOME}/.ssh/known_hosts && touch ${HOME}/.ssh/known_hosts
+  - ssh-keyscan -p 29418 -t ed25519 'gitlab.devtools.intel.com' >> ${HOME}/.ssh/known_hosts
+  - cat ${HOME}/.ssh/known_hosts
+
+# Build environment already set up at /home/gitlab-runner/tgr-build-setup
+build-bare-metal:
+  stage: build
+  script:
+    # Pull leatest ECS build setup `tgr-build-setup`
+    - cd ${HOME}/tgr-build-setup
+    - git reset --hard
+    - git pull origin master
+    # Clear last time change to `meta-plcopen`
+    - cd ./build/ecs-base-poky/layers/meta-plcopen
+    - git reset --hard
+    - cd ./recipes-plcopen/plcopen-motion-control
+    # Change git source of `plcopen_motion_control`
+    - number=`sed -n '/SRC_URI/=' ./plcopen-motion-control_internal.inc`
+    - echo $number
+    - sed -i "${number}a SRC_URI = \"$PLC_URL;protocol=ssh;destsuffix=git/plcopen_motion_control\"" ./plcopen-motion-control_internal.inc
+    - sed -i "${number}d" ./plcopen-motion-control_internal.inc
+    # Change git commit id of `plcopen_motion_control`
+    - number=`sed -n '/SRCREV/=' ./plcopen-motion-control_internal.inc`
+    - echo $number
+    - sed -i "${number}a SRCREV = \"$PLC_HEAD\"" ./plcopen-motion-control_internal.inc
+    - sed -i "${number}d" ./plcopen-motion-control_internal.inc
+    # Build image `tgr-image-bare-metal`
+    - cd ${HOME}/tgr-build-setup/build/ecs-base-poky/poky/
+    - source oe-init-build-env ../build/
+    - bitbake ecs-image-base-poky
+  only:
+    refs:
+      - master
+
+# Build environment already set up at /home/gitlab-runner/tgr-build-setup
+build-bare-metal-xenomai:
+  stage: build
+  script:
+    # Pull leatest ECS build setup `tgr-build-setup`
+    - cd ${HOME}/tgr-build-setup
+    - git reset --hard
+    - git pull origin master
+    # Clear last time change to `meta-plcopen`
+    - cd ./build/ecs-xenomai-poky/layers/meta-plcopen
+    - git reset --hard
+    - cd ./recipes-plcopen/plcopen-motion-control
+    # Change git source of `plcopen_motion_control`
+    - number=`sed -n '/SRC_URI/=' ./plcopen-motion-control_internal.inc`
+    - echo $number
+    - sed -i "${number}a SRC_URI = \"$PLC_URL;protocol=ssh;destsuffix=git/plcopen_motion_control\"" ./plcopen-motion-control_internal.inc
+    - sed -i "${number}d" ./plcopen-motion-control_internal.inc
+    # Change git commit id of `plcopen_motion_control`
+    - number=`sed -n '/SRCREV/=' ./plcopen-motion-control_internal.inc`
+    - echo $number
+    - sed -i "${number}a SRCREV = \"$PLC_HEAD\"" ./plcopen-motion-control_internal.inc
+    - sed -i "${number}d" ./plcopen-motion-control_internal.inc
+    # Build image `tgr-image-bare-metal-xenomai`
+    - cd ${HOME}/tgr-build-setup/build/ecs-xenomai-poky/poky/
+    - source oe-init-build-env ../build/
+    - bitbake ecs-image-xenomai-poky
+  only:
+    refs:
+      - master
+
+pages:
+  stage: deploy
+  before_script:
+    - sudo apt-get update -qq
+    - sudo apt-get -qq install doxygen
+    - sudo apt-get -qq install graphviz
+    - sudo apt-get -qq install libeigen3-dev
+  script:
+    - pwd
+    - doxygen ./Doxyfile 2>&1 >/dev/null
+    - mkdir .public
+    - cp -r build/html/. .public
+    - mv .public public
+    - ls public/
+  artifacts:
+    paths:
+      - public
+  only:
+    refs:
+      - master
